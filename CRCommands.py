@@ -42,7 +42,7 @@ def createDB(db_path):
         fermi_yaml_file TEXT,
         fermi_pedestal_meas TEXT);
         """
-        ] #after dev, change root_file to pedestal_meas
+        ]
 
     try:
         with sqlite3.connect(db_path) as conn:
@@ -80,7 +80,7 @@ class ModData: #data for MD and LD modules. other parts will nee their own class
         self.fermi_yaml_file = fermi_yaml_file
         self.fermi_pedestal_meas = fermi_pedestal_meas
 
-class DBFuncs(): #consider making it so that the class is just a db???
+class DBFuncs(): 
     def __init__(self,
                 db_path):        
         self.db_path = db_path
@@ -90,7 +90,7 @@ class DBFuncs(): #consider making it so that the class is just a db???
             cur = conn.cursor()
             cur.execute(f"INSERT INTO {barcode[3:5]}_modules VALUES(?,?,NULL,NULL,NULL,NULL,NULL,NULL,NULL)", 
             (barcode,loc_at_fermi))
-        return 0 #this func would add an empty part with a barcode and loc_at_fermi. other info would have to be added interactivley
+    #this func would add an empty part with a barcode and loc_at_fermi. other info would have to be added interactivley
     
     def editCell(self, table, col, idx_col, row, value):
         try:
@@ -121,11 +121,11 @@ class DBFuncs(): #consider making it so that the class is just a db???
         except sqlite3.OperationalError as e:
             print("\n ERROR in addNewModToDB(): failed to add to barcodes: \n", e) 
 
-    def addYAMLToMod(self, barcode, yaml_path, test_loc):
+    def addYAMLToMod(self, barcode, yaml_file, test_loc):
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cur = conn.cursor()
-                with open(yaml_path, 'r') as file: 
+                with open(yaml_file, 'r') as file: 
                     yaml_contents = file.read()
                 if test_loc != "fermi": 
                     tbl_loc = "alt"
@@ -158,7 +158,7 @@ class DBFuncs(): #consider making it so that the class is just a db???
                     else:
                         tmp_dict = json.loads(tbl_names[0][0])
                         ver = int(list(tmp_dict.keys())[-1][-1])+1
-                        test_ver = "test"+str(ver)
+                        test_ver = "v"+str(ver)
                         tbl_name = f"{barcode}_{test_loc}_{test_ver}"
                         tmp_dict[test_ver] = {"tbl_name":tbl_name, "date_time": datetime_str}
                         tbl_names = json.dumps(tmp_dict)
@@ -291,7 +291,7 @@ class DBFuncs(): #consider making it so that the class is just a db???
 
 class ComparePlots: #This class will mostly stay the same, just diff initialization/calls
     def __init__(self, db_path, barcode, alt_test_loc, test_ver): #test ver is version of test from fermi     
-        self.db = DBFuncs(db_path)                            #test ver format => "test#"
+        self.db = DBFuncs(db_path)                            #test ver format => "v#"
         self.barcode = barcode
         self.test_ver = test_ver
         self.fermi_loc = "fermi"
@@ -308,7 +308,7 @@ class ComparePlots: #This class will mostly stay the same, just diff initializat
         if result[0] is None:
             print(f"Test table {self.fermi_test} not found or error occurred.")
             return
-        fermi_chip, fermi_channel, fermi_channeltype, fermi_adc_stdd, fermi_adc_mean = result
+        fermi_chip, fermi_channel, fermi_channeltype, fermi_adc_mean, fermi_adc_stdd = result
                 
         self.fermi_dict = {
                     "chip": fermi_chip, 
@@ -317,7 +317,7 @@ class ComparePlots: #This class will mostly stay the same, just diff initializat
                     "adc_mean": fermi_adc_mean,
                     "adc_stdd": fermi_adc_stdd}
         
-        alt_chip, alt_channel, alt_channeltype, alt_adc_stdd, alt_adc_mean = self.db.getADCTest(self.alt_test)
+        alt_chip, alt_channel, alt_channeltype, alt_adc_mean, alt_adc_stdd = self.db.getADCTest(self.alt_test)
         self.alt_dict = {
                     "chip": alt_chip, 
                     "channel": alt_channel, 
@@ -350,24 +350,6 @@ class ComparePlots: #This class will mostly stay the same, just diff initializat
         fig_stdd, axes_stdd = plt.subplots(nrows=3, ncols=3, sharex=True, constrained_layout=True)#sharey=True)
         fig_mean, axes_mean = plt.subplots(nrows=3, ncols=3, sharex=True, constrained_layout=True)#sharey=True, )
         
-        data_stdd = {
-            "data_type": "stdd",
-            'chip0': {'fermi': self.fermi_dict["adc_mean"][:78], 'alt': self.alt_dict["adc_mean"][:78], 'ratio': self.ratio_dict["adc_mean"][:78]},
-            'chip1': {'fermi': self.fermi_dict["adc_mean"][78:156], 'alt': self.alt_dict["adc_mean"][78:156], 'ratio': self.ratio_dict["adc_mean"][78:156]},
-            'chip2': {'fermi': self.fermi_dict["adc_mean"][156:], 'alt': self.alt_dict["adc_mean"][156:], 'ratio': self.ratio_dict["adc_mean"][156:]}
-        }
-        
-        data_stdd = {"data_type": "stdd"}
-        init = 0
-        for idx, val in enumerate(self.fermi_dict["chip"]):
-            key = "chip" + str(self.fermi_dict["chip"][idx])
-            if idx == len(self.fermi_dict["chip"]) - 1:
-                data_stdd[key] = {'fermi': self.fermi_dict["adc_mean"][init:], 'alt': self.alt_dict["adc_mean"][init:], 'ratio': self.ratio_dict["adc_mean"][init:]}
-            elif self.fermi_dict["chip"][idx] != self.fermi_dict["chip"][idx+1]:
-                idx = idx+1
-                data_stdd[key] = {'fermi': self.fermi_dict["adc_mean"][init:idx], 'alt': self.alt_dict["adc_mean"][init:idx], 'ratio': self.ratio_dict["adc_mean"][init:idx]}
-                init = idx
-        
         data_mean = {"data_type": "mean"}
         init = 0
         for idx, val in enumerate(self.fermi_dict["chip"]):
@@ -379,15 +361,19 @@ class ComparePlots: #This class will mostly stay the same, just diff initializat
                 data_mean[key] = {'fermi': self.fermi_dict["adc_mean"][init:idx], 'alt': self.alt_dict["adc_mean"][init:idx], 'ratio': self.ratio_dict["adc_mean"][init:idx]}
                 init = idx
         
-        data_mean = {
-            "data_type": "mean",
-            'chip0': {'fermi': self.fermi_dict["adc_stdd"][:78], 'alt': self.alt_dict["adc_stdd"][:78], 'ratio': self.ratio_dict["adc_stdd"][:78]},
-            'chip1': {'fermi': self.fermi_dict["adc_stdd"][78:156], 'alt': self.alt_dict["adc_stdd"][78:156], 'ratio': self.ratio_dict["adc_stdd"][78:156]},
-            'chip2': {'fermi': self.fermi_dict["adc_stdd"][156:], 'alt': self.alt_dict["adc_stdd"][156:], 'ratio': self.ratio_dict["adc_stdd"][156:]}
-        }
+        data_stdd = {"data_type": "stdd"}
+        init = 0
+        for idx, val in enumerate(self.fermi_dict["chip"]):
+            key = "chip" + str(self.fermi_dict["chip"][idx])
+            if idx == len(self.fermi_dict["chip"]) - 1:
+                data_stdd[key] = {'fermi': self.fermi_dict["adc_stdd"][init:], 'alt': self.alt_dict["adc_stdd"][init:], 'ratio': self.ratio_dict["adc_stdd"][init:]}
+            elif self.fermi_dict["chip"][idx] != self.fermi_dict["chip"][idx+1]:
+                idx = idx+1
+                data_stdd[key] = {'fermi': self.fermi_dict["adc_stdd"][init:idx], 'alt': self.alt_dict["adc_stdd"][init:idx], 'ratio': self.ratio_dict["adc_stdd"][init:idx]}
+                init = idx
         
         #actually adding data points
-        for dtype, ftype, atype in zip([data_stdd,data_mean],[fig_stdd,fig_mean],[axes_stdd,axes_mean]):
+        for dtype, ftype, atype in zip([data_mean,data_stdd],[fig_mean,fig_stdd],[axes_mean,axes_stdd]):
             for row, place in enumerate(rows):
                 for col, chip in enumerate(cols):
                     place = place.split(' ', 1)[0].lower()
@@ -401,16 +387,21 @@ class ComparePlots: #This class will mostly stay the same, just diff initializat
                     
                     #Styling axes 
                     if place == "ratio":
-                        ax.set_ylim(-2,4)
-                        ax.yaxis.set_ticks(np.arange(-2, 5, 1))
+                        ax.set_ylim(-1,3)
+                        ax.yaxis.set_ticks(np.arange(-1, 4, 1))
+                        for idx, val in enumerate(y):
+                            if val > 2:
+                                ax.scatter(x[idx], y[idx], c='red')
+                            elif val == 0:
+                                ax.scatter(x[idx], y[idx], c='yellow')
                     else:
                         if dtype["data_type"] == "mean":
                             ax.set_ylim(-2,10)
                             ax.yaxis.set_ticks(np.arange(-2, 11, 2))
                         elif dtype["data_type"] == "stdd":
                             ax.set_ylim(-2,400)
-                            ax.yaxis.set_ticks(np.arange(0, 402, 100))
-            #Setting Titles
+                            ax.yaxis.set_ticks(np.arange(0, 402, 100))     
+            #Setting Titles                                                             
             for ax, col in zip(atype[0], cols):
                 ax.set_title(col)
             for ax, row in zip(atype[:,0], rows):
@@ -441,17 +432,17 @@ def main():
     cmu_yaml_file = r"C:\cygwin64\home\charl\25CERN\CassetteReception\YAMLFiles\cmu_initial_full_config.yaml" 
 #pedestal_run_date_time.root
     
-    barcode = "320LDF3CXTT1003"
+    barcode = "320LDF3CXTT1004"
     loc = "cmu"
     ##################################################################
-    """db = DBFuncs(db_path)
-    db.rmMod(barcode)
-    db.addNewModToDB(barcode,loc,cmu_pedestal_meas,cmu_yaml_file,loc_at_fermi="Reception")
-    db.addYAMLToMod(barcode, fermi_yaml_file, "fermi")
-    db.addYAMLToMod(barcode, cmu_yaml_file, "cmu")
-    db.addADCTestToMod(barcode, "fermi", fermi_pedestal_meas)
+    db = DBFuncs(db_path)
+    #db.rmMod(barcode)
+    #db.addNewModToDB(barcode,loc,cmu_pedestal_meas,cmu_yaml_file,loc_at_fermi="Reception")
+    #db.addYAMLToMod(barcode, fermi_yaml_file, "fermi")
+    #db.addYAMLToMod(barcode, cmu_yaml_file, "cmu")
+    #db.addADCTestToMod(barcode, "fermi", fermi_pedestal_meas)
     test = f"{barcode}_fermi_v1"
-
+    """
     test_results = db.getADCTest(test)
     print(type(test_results))
     
@@ -462,12 +453,12 @@ def main():
     all_mods = db.getMods()
     print("all_mods: ", all_mods)
     """
-    
     comp = ComparePlots(db_path, barcode, loc, "v1")
     print(comp.fermi_test)
     comp.comparePlots()
     comp.plotComparison()
     print("plots finished")
+    
 
 if __name__ == '__main__':
         main()
